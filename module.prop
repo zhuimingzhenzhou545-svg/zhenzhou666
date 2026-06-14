@@ -1,6 +1,6 @@
-id=battery_tracker
-name=Battery Tracker
-version=v1.0
-versionCode=1
-author=BatteryTracker
-description=记录电量百分比变化及耗时
+id=battery-tracker-zh
+name=电量追踪器
+version=v2.0
+versionCode=20
+author=ZhenZhou
+description=记录电量百分比变化并提供精美Web界面查看数据

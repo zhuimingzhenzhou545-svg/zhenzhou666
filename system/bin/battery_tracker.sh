@@ -1,93 +1,87 @@
 #!/system/bin/sh
-# Battery Tracker Module
-# Records battery percentage changes with timestamps
+# 电量追踪器 - 主脚本
+# 功能：监控电量变化并记录日志
 
-LOG_FILE="/sdcard/BatteryTracker/log.txt"
+LOG_DIR="/sdcard/BatteryTracker"
+LOG_FILE="${LOG_DIR}/log.txt"
 PID_FILE="/dev/battery_tracker.pid"
+PID_WEB="/dev/battery_web.pid"
 
-# Create log directory if not exists
-mkdir -p /sdcard/BatteryTracker
+# 创建日志目录
+mkdir -p "${LOG_DIR}"
 
-# Check if already running
-if [ -f "$PID_FILE" ]; then
-    OLD_PID=$(cat "$PID_FILE")
-    if kill -0 "$OLD_PID" 2>/dev/null; then
-        exit 1
+# 检查是否已运行
+if [ -f "${PID_FILE}" ]; then
+    OLD_PID=$(cat "${PID_FILE}")
+    if kill -0 "${OLD_PID}" 2>/dev/null; then
+        exit 0
     fi
 fi
 
-# Write PID
-echo $$ > "$PID_FILE"
+# 写入PID
+echo $$ > "${PID_FILE}"
 
-# Initialize
+# 初始化
 LAST_PERCENT=""
-START_TIME=""
+LAST_TIME_S=""
 
-# Get current time in format: n时n分n秒
-get_time_str() {
-    local t=$(date +"%H时%M分%S秒")
-    echo "$t"
-}
-
-# Calculate duration
-calc_duration() {
-    local start=$1
-    local end=$2
-    
-    if [ -z "$start" ] || [ -z "$end" ]; then
-        echo "00时00分00秒"
-        return
-    fi
-    
-    local start_sec=$(echo "$start" | awk -F: '{print $1*3600 + $2*60 + $3}')
-    local end_sec=$(echo "$end" | awk -F: '{print $1*3600 + $2*60 + $3}')
-    
-    local diff=$((end_sec - start_sec))
-    
-    if [ $diff -lt 0 ]; then
-        diff=0
-    fi
-    
-    local hours=$((diff / 3600))
-    local minutes=$(((diff % 3600) / 60))
-    local seconds=$((diff % 60))
-    
-    printf "%02d时%02d分%02d秒\n" $hours $minutes $seconds
-}
-
-# Get battery percentage
+# 获取电量百分比
 get_battery_percent() {
     local level=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
-    if [ -z "$level" ]; then
-        level=$(dumpsys battery | grep level | awk '{print $2}')
+    if [ -z "${level}" ]; then
+        level=$(dumpsys battery 2>/dev/null | grep level | awk '{print $2}')
     fi
-    echo "$level"
+    if [ -z "${level}" ]; then
+        level=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
+    fi
+    echo "${level}"
 }
 
-# Get current time in seconds since epoch
+# 记录初始时间戳
 get_time_seconds() {
     date +%s
 }
 
-# Main tracking loop
+# 获取格式化时间
+get_time_str() {
+    local h=$(date +%H)
+    local m=$(date +%M)
+    local s=$(date +%S)
+    echo "${h}时${m}分${s}秒"
+}
+
+# 计算耗时并格式化
+calc_duration() {
+    local start=$1
+    local end=$2
+    local diff=$((end - start))
+    if [ ${diff} -lt 0 ]; then
+        diff=0
+    fi
+    local hours=$((diff / 3600))
+    local minutes=$(((diff % 3600) / 60))
+    local seconds=$((diff % 60))
+    printf "%02d时%02d分%02d秒" ${hours} ${minutes} ${seconds}
+}
+
+# 主循环
 while true; do
     CURRENT_PERCENT=$(get_battery_percent)
     CURRENT_TIME=$(get_time_str)
-    CURRENT_SECONDS=$(get_time_seconds)
-    
-    if [ -n "$CURRENT_PERCENT" ]; then
-        if [ -n "$LAST_PERCENT" ] && [ "$CURRENT_PERCENT" != "$LAST_PERCENT" ]; then
-            # Battery percentage changed
-            DURATION=$(calc_duration "$START_TIME_SEC" "$CURRENT_SECONDS")
-            echo "电量${CURRENT_PERCENT}%，${CURRENT_TIME}，耗时${DURATION}" >> "$LOG_FILE"
+    CURRENT_TIME_S=$(get_time_seconds)
+
+    if [ -n "${CURRENT_PERCENT}" ]; then
+        if [ -n "${LAST_PERCENT}" ] && [ "${CURRENT_PERCENT}" != "${LAST_PERCENT}" ]; then
+            # 电量变化，记录
+            DURATION=$(calc_duration "${LAST_TIME_S}" "${CURRENT_TIME_S}")
+            echo "电量${CURRENT_PERCENT}%，${CURRENT_TIME}，耗时${DURATION}" >> "${LOG_FILE}"
         fi
-        
-        if [ "$CURRENT_PERCENT" != "$LAST_PERCENT" ]; then
-            LAST_PERCENT="$CURRENT_PERCENT"
-            START_TIME="$CURRENT_TIME"
-            START_TIME_SEC="$CURRENT_SECONDS"
+
+        if [ "${CURRENT_PERCENT}" != "${LAST_PERCENT}" ]; then
+            LAST_PERCENT="${CURRENT_PERCENT}"
+            LAST_TIME_S="${CURRENT_TIME_S}"
         fi
     fi
-    
+
     sleep 10
 done
